@@ -1,0 +1,72 @@
+# Единые правила структуры проектов.
+# Это единственный источник правды: скилл project-conventions и scripts/check.py читают только его.
+#
+# Поля правила:
+#   id             — короткий постоянный идентификатор
+#   since          — дата решения (проекты старше могут его нарушать — это ожидаемо, не ошибка)
+#   severity       — "error" (нарушение стандарта) или "warn" (стоит посмотреть)
+#   title, why     — что и зачем, для человека и агента
+#   applies_if_any — правило проверяется, только если в корне есть хоть один из этих glob'ов (пусто = всегда)
+#   require        — каждый glob должен найтись в корне
+#   forbid         — ни один glob не должен найтись в корне (кроме имён из allow)
+#   allow          — исключения для forbid
+#   forbid_text    — [{ file, pattern, message }]: регулярка не должна встречаться в файле
+#   fix            — как привести проект к правилу (инструкция для агента)
+#
+# Glob'ы проверяются только в корне проекта.
+
+[[rule]]
+id = "python-uv"
+since = "2026-10-19"
+severity = "error"
+title = "Python-проекты на uv"
+why = "Один менеджер пакетов везде: воспроизводимый uv.lock, uv run / uv sync одинаково на всех машинах."
+applies_if_any = ["*.py", "pyproject.toml", "requirements*.txt", "setup.py", "setup.cfg", "Pipfile", "poetry.lock"]
+require = ["pyproject.toml", "uv.lock"]
+forbid = ["requirements*.txt", "Pipfile", "Pipfile.lock", "poetry.lock", "setup.py", "setup.cfg"]
+forbid_text = [
+  { file = "pyproject.toml", pattern = '^\[tool\.poetry', message = "секция [tool.poetry] — проект на Poetry" },
+]
+fix = """
+1. Если pyproject.toml нет — `uv init --bare`, затем перенести зависимости: `uv add -r requirements.txt`
+   (dev-зависимости: `uv add --dev -r requirements-dev.txt`).
+2. Poetry: перенести [tool.poetry.dependencies] в [project].dependencies (PEP 621),
+   dev-группы в [dependency-groups], удалить [tool.poetry*] и poetry.lock.
+3. Pipenv: перенести пакеты из Pipfile через `uv add`, удалить Pipfile и Pipfile.lock.
+4. setup.py / setup.cfg: метаданные перенести в [project], build-backend — hatchling или uv_build.
+5. `uv lock` и `uv sync`, проверить, что проект запускается через `uv run`.
+6. Обновить README/AGENTS.md: команды pip/poetry заменить на uv.
+"""
+
+[[rule]]
+id = "agents-md"
+since = "2026-10-19"
+severity = "error"
+title = "Инструкции для агентов — в AGENTS.md"
+why = """
+AGENTS.md — общий стандарт для всех агентов. Claude Code читает его с версии 2.1.277 (2026-09-18),
+но только как fallback: если рядом лежит CLAUDE.md, по умолчанию берётся CLAUDE.md, а AGENTS.md игнорируется.
+Поэтому CLAUDE.md в корне быть не должно.
+"""
+require = ["AGENTS.md"]
+forbid = ["CLAUDE.md"]
+fix = """
+1. Если есть CLAUDE.md и нет AGENTS.md — переименовать CLAUDE.md в AGENTS.md (в SVN: `svn move`).
+2. Если есть оба — слить содержимое в AGENTS.md (противоречия показать пользователю), CLAUDE.md удалить.
+3. Если нет ни одного — создать короткий AGENTS.md: что за проект, как собрать/запустить, где документация.
+4. Ссылки на CLAUDE.md в README и docs заменить на AGENTS.md.
+CLAUDE.local.md (личный, не в репозитории) не трогать.
+"""
+
+[[rule]]
+id = "docs-folder"
+since = "2026-10-19"
+severity = "warn"
+title = "Документация — в папке docs/"
+why = "В корне остаются только входные файлы; вся остальная документация в одном предсказуемом месте."
+forbid = ["*.md", "*.rst", "*.adoc", "doc", "documentation", "Docs"]
+allow = ["README.md", "AGENTS.md", "CLAUDE.md", "CLAUDE.local.md", "CHANGELOG.md", "LICENSE.md", "CONTRIBUTING.md", "SECURITY.md"]
+fix = """
+Перенести документы из корня в docs/ (в SVN: `svn move`) и поправить относительные ссылки на них
+в README.md, AGENTS.md и самих документах. Папку doc/ или documentation/ переименовать в docs/.
+"""
